@@ -2,6 +2,7 @@ package com.example.zantifraud;
 
 import com.example.zantifraud.feature.persistence.clickhouse.AccountAssetMovementRepository;
 import com.example.zantifraud.feature.persistence.clickhouse.model.TransferOutTotals;
+import com.example.zantifraud.evaluation.rule.RuleEngine;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
@@ -26,7 +27,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(properties = "risk.rules.transfer-out-amount-24h-limit=100000")
+@SpringBootTest(properties = {
+        "risk.rules.transfer-out-amount-24h-limit=500000",
+        "risk.rules.transfer-out-count-24h-limit=50",
+        "risk.rules.transfer-single-amount-limit=100000"})
 @AutoConfigureMockMvc
 class ZAntiFraudApplicationTests {
     private static final String REQUEST = """
@@ -57,7 +61,7 @@ class ZAntiFraudApplicationTests {
     }
 
     @ParameterizedTest
-    @CsvSource({"90000, ALLOW", "90001, BLOCK"})
+    @CsvSource({"490000, ALLOW", "490001, BLOCK"})
     void returnsTheRecommendationAndDecisionMetadata(long history, String action) throws Exception {
         when(movements.queryTransferOutTotals(any(), any(), any(), any()))
                 .thenReturn(new TransferOutTotals(1L, history));
@@ -71,7 +75,7 @@ class ZAntiFraudApplicationTests {
                 .andExpect(jsonPath("$.status").value("COMPLETED"))
                 .andExpect(jsonPath("$.recommendedAction").value(action))
                 .andExpect(jsonPath("$.decisionId").isNotEmpty())
-                .andExpect(jsonPath("$.ruleSetVersion").value("rules-v1"))
+                .andExpect(jsonPath("$.ruleSetVersion").value(RuleEngine.RULE_SET_VERSION))
                 .andExpect(jsonPath("$.policyVersion").value("policy-v1"))
                 .andExpect(jsonPath("$.evaluatedAt").isNotEmpty());
         if ("BLOCK".equals(action)) {
@@ -94,8 +98,42 @@ class ZAntiFraudApplicationTests {
                 .andExpect(jsonPath("$.status").value("UNAVAILABLE"))
                 .andExpect(jsonPath("$.recommendedAction").value(nullValue()))
                 .andExpect(jsonPath("$.decisionId").value(nullValue()))
+                .andExpect(jsonPath("$.reasons.length()").value(2))
                 .andExpect(jsonPath("$.reasons[0].code").value("TRANSFER_OUT_HISTORY_UNAVAILABLE"))
-                .andExpect(jsonPath("$.reasons[0].ruleId").value("transfer-out-amount-24h-limit"));
+                .andExpect(jsonPath("$.reasons[0].ruleId").value("transfer-out-amount-24h-limit"))
+                .andExpect(jsonPath("$.reasons[1].code").value("TRANSFER_OUT_COUNT_HISTORY_UNAVAILABLE"))
+                .andExpect(jsonPath("$.reasons[1].ruleId").value("transfer-out-count-24h-limit"));
+    }
+
+    @Test
+    void blocksSingleTransferEvenWhenHistoryCannotBeRead() throws Exception {
+        when(movements.queryTransferOutTotals(any(), any(), any(), any()))
+                .thenThrow(new SQLException("History is unavailable"));
+        mvc.perform(post("/api/v1/risk-evaluations")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(REQUEST.replace("\"amount\": 10000", "\"amount\": 100001")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("COMPLETED"))
+                .andExpect(jsonPath("$.recommendedAction").value("BLOCK"))
+                .andExpect(jsonPath("$.ruleSetVersion").value(RuleEngine.RULE_SET_VERSION))
+                .andExpect(jsonPath("$.reasons.length()").value(1))
+                .andExpect(jsonPath("$.reasons[0].ruleId").value("transfer-single-amount-limit"))
+                .andExpect(jsonPath("$.reasons[0].code").value("TRANSFER_SINGLE_AMOUNT_LIMIT_EXCEEDED"));
+    }
+
+    @Test
+    void reportsAllThreeViolationsInTheHttpResponse() throws Exception {
+        when(movements.queryTransferOutTotals(any(), any(), any(), any()))
+                .thenReturn(new TransferOutTotals(50L, 450000L));
+        mvc.perform(post("/api/v1/risk-evaluations")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(REQUEST.replace("\"amount\": 10000", "\"amount\": 100001")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.recommendedAction").value("BLOCK"))
+                .andExpect(jsonPath("$.reasons.length()").value(3))
+                .andExpect(jsonPath("$.reasons[0].ruleId").value("transfer-out-amount-24h-limit"))
+                .andExpect(jsonPath("$.reasons[1].ruleId").value("transfer-out-count-24h-limit"))
+                .andExpect(jsonPath("$.reasons[2].ruleId").value("transfer-single-amount-limit"));
     }
 
     @ParameterizedTest

@@ -11,21 +11,28 @@ import java.util.List;
 import java.util.Objects;
 
 import static com.example.zantifraud.feature.model.TransferFeatureKeys.TRANSFER_OUT_AMOUNT_24H;
+import static com.example.zantifraud.feature.model.TransferFeatureKeys.TRANSFER_OUT_COUNT_24H;
 
 /** Evaluates the V1 rules and reports findings for the decision policy. */
 @Component
 public class RuleEngine {
-    public static final String RULE_SET_VERSION = "rules-v1";
+    public static final String RULE_SET_VERSION = "rules-v2";
 
     private static final String TRANSFER_OUT_LIMIT_RULE = "transfer-out-amount-24h-limit";
+    private static final String TRANSFER_COUNT_LIMIT_RULE = "transfer-out-count-24h-limit";
+    private static final String TRANSFER_SINGLE_LIMIT_RULE = "transfer-single-amount-limit";
 
-    private final Long transferOutAmount24hLimit;
+    private final long transferOutAmount24hLimit;
+    private final long transferOutCount24hLimit;
+    private final long transferSingleAmountLimit;
 
-    public RuleEngine(@Value("${risk.rules.transfer-out-amount-24h-limit}") Long transferOutAmount24hLimit) {
-        this.transferOutAmount24hLimit = Objects.requireNonNull(transferOutAmount24hLimit);
-        if (transferOutAmount24hLimit <= 0) {
-            throw new IllegalArgumentException("The 24-hour outgoing transfer limit must be positive");
-        }
+    public RuleEngine(
+            @Value("${risk.rules.transfer-out-amount-24h-limit}") Long transferOutAmount24hLimit,
+            @Value("${risk.rules.transfer-out-count-24h-limit}") Long transferOutCount24hLimit,
+            @Value("${risk.rules.transfer-single-amount-limit}") Long transferSingleAmountLimit) {
+        this.transferOutAmount24hLimit = positiveLimit(transferOutAmount24hLimit, "24-hour outgoing amount");
+        this.transferOutCount24hLimit = positiveLimit(transferOutCount24hLimit, "24-hour outgoing count");
+        this.transferSingleAmountLimit = positiveLimit(transferSingleAmountLimit, "single-transfer amount");
     }
 
     public RuleEvaluation evaluate(EventModel event, FeatureSnapshot features) {
@@ -38,8 +45,10 @@ public class RuleEngine {
             throw new IllegalArgumentException("A transfer payload is required");
         }
 
-        RuleOutcome outcome = evaluateTransferOutLimit(transfer, features);
-        return new RuleEvaluation(List.of(outcome));
+        return new RuleEvaluation(List.of(
+                evaluateTransferOutLimit(transfer, features),
+                evaluateTransferCountLimit(features),
+                evaluateTransferSingleLimit(transfer)));
     }
 
     private RuleOutcome evaluateTransferOutLimit(Transfer transfer, FeatureSnapshot features) {
@@ -55,5 +64,35 @@ public class RuleEngine {
                     "TRANSFER_OUT_AMOUNT_24H_LIMIT_EXCEEDED");
         }
         return new RuleOutcome(TRANSFER_OUT_LIMIT_RULE, RuleOutcomeStatus.NOT_MATCHED, null);
+    }
+
+    private RuleOutcome evaluateTransferCountLimit(FeatureSnapshot features) {
+        Object value = features.values().get(TRANSFER_OUT_COUNT_24H);
+        if (!(value instanceof Long history) || history < 0) {
+            return new RuleOutcome(TRANSFER_COUNT_LIMIT_RULE, RuleOutcomeStatus.UNAVAILABLE,
+                    "TRANSFER_OUT_COUNT_HISTORY_UNAVAILABLE");
+        }
+        // history + 1 > limit, without overflowing even when history is Long.MAX_VALUE.
+        if (history >= transferOutCount24hLimit) {
+            return new RuleOutcome(TRANSFER_COUNT_LIMIT_RULE, RuleOutcomeStatus.MATCHED,
+                    "TRANSFER_OUT_COUNT_24H_LIMIT_EXCEEDED");
+        }
+        return new RuleOutcome(TRANSFER_COUNT_LIMIT_RULE, RuleOutcomeStatus.NOT_MATCHED, null);
+    }
+
+    private RuleOutcome evaluateTransferSingleLimit(Transfer transfer) {
+        if (transfer.amount() > transferSingleAmountLimit) {
+            return new RuleOutcome(TRANSFER_SINGLE_LIMIT_RULE, RuleOutcomeStatus.MATCHED,
+                    "TRANSFER_SINGLE_AMOUNT_LIMIT_EXCEEDED");
+        }
+        return new RuleOutcome(TRANSFER_SINGLE_LIMIT_RULE, RuleOutcomeStatus.NOT_MATCHED, null);
+    }
+
+    private static long positiveLimit(Long limit, String name) {
+        Objects.requireNonNull(limit, name + " limit is required");
+        if (limit <= 0) {
+            throw new IllegalArgumentException("The " + name + " limit must be positive");
+        }
+        return limit;
     }
 }

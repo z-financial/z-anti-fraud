@@ -1,0 +1,43 @@
+services:
+  app:
+    build: .
+    image: z-anti-fraud:local
+    ports:
+      - "127.0.0.1:${APP_PORT:-8080}:8080"
+    environment:
+      CLICKHOUSE_JDBC_URL: jdbc:clickhouse:http://clickhouse:8123/default
+      CLICKHOUSE_USERNAME: default
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-local-dev-password}
+      TRANSFER_OUT_AMOUNT_24H_LIMIT: ${TRANSFER_OUT_AMOUNT_24H_LIMIT:-500000}
+      TRANSFER_OUT_COUNT_24H_LIMIT: ${TRANSFER_OUT_COUNT_24H_LIMIT:-50}
+      TRANSFER_SINGLE_AMOUNT_LIMIT: ${TRANSFER_SINGLE_AMOUNT_LIMIT:-100000}
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.8
+    ports:
+      - "127.0.0.1:${CLICKHOUSE_HTTP_PORT:-8123}:8123"
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-local-dev-password}
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - ./src/main/resources/db/clickhouse/account_asset_movements.sql:/docker-entrypoint-initdb.d/01-account-asset-movements.sql:ro
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - clickhouse-client --user "$$CLICKHOUSE_USER" --password "$$CLICKHOUSE_PASSWORD" --database "$$CLICKHOUSE_DB" --query 'SELECT 1 FROM account_asset_movements LIMIT 0'
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+volumes:
+  clickhouse-data:

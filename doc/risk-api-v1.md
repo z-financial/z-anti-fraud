@@ -177,14 +177,32 @@ deduplication, distinct operations, filtering, time boundaries, current-event
 exclusion, cross-currency aggregation, empty history, and totals exceeding Int64.
 Without that URL it is skipped.
 
-## Transfer amount rule
+## Transfer rules
 
-The rule adds the current transfer amount to the sender's 24-hour outgoing
-amount. It returns `MATCHED` above the limit and `NOT_MATCHED` at or below it.
-Missing or unusable history yields `UNAVAILABLE`. Configure a positive 64-bit integer
-limit with `risk.rules.transfer-out-amount-24h-limit` or the
-`TRANSFER_OUT_AMOUNT_24H_LIMIT` environment variable. The default is 100000
-upstream units.
+Rule set `rules-v2` evaluates all three rules independently and reports every
+matching rule. Limits use strict `>` comparisons: equality does not match.
+
+| Rule ID / property under `risk.rules` | Environment variable | Default | Evaluated value |
+| --- | --- | --- | --- |
+| `transfer-out-amount-24h-limit` | `TRANSFER_OUT_AMOUNT_24H_LIMIT` | 500000 | Historical outgoing amount plus the current transfer amount. |
+| `transfer-out-count-24h-limit` | `TRANSFER_OUT_COUNT_24H_LIMIT` | 50 | Historical distinct operation count plus one for the current transfer. |
+| `transfer-single-amount-limit` | `TRANSFER_SINGLE_AMOUNT_LIMIT` | 100000 | Current transfer amount, independent of history. |
+
+All configured limits must be positive 64-bit integers. Amounts use raw upstream
+integer units; no currency scaling or conversion is performed. Both historical
+features use the sender's submitted outgoing activity in the window defined above.
+The 50th submission is permitted by the count rule; the 51st matches.
+
+Missing, incorrectly typed, or negative history marks its respective rolling rule
+`UNAVAILABLE`. The single-transfer rule still evaluates without history. A single
+transfer above its limit therefore produces `COMPLETED` / `BLOCK` even when history
+cannot be read, following the decision policy below. If nothing matches and a
+required rolling rule is unavailable, no recommendation is returned.
+
+Violation reason codes are `TRANSFER_OUT_AMOUNT_24H_LIMIT_EXCEEDED`,
+`TRANSFER_OUT_COUNT_24H_LIMIT_EXCEEDED`, and `TRANSFER_SINGLE_AMOUNT_LIMIT_EXCEEDED`.
+Unavailable amount/count history uses `TRANSFER_OUT_HISTORY_UNAVAILABLE` and
+`TRANSFER_OUT_COUNT_HISTORY_UNAVAILABLE`, respectively.
 
 ## Decision policy
 

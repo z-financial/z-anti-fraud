@@ -1,0 +1,15 @@
+.git
+.idea
+.vscode
+.mvn
+mvnw
+mvnw.cmd
+target
+doc
+HELP.md
+README.md
+.env
+.env.*
+*.log
+# Research datasets are not used by the application at runtime.
+src/main/resources/dataset
