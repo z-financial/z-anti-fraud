@@ -13,7 +13,7 @@ public record FeatureEvent(
         InternalEventType eventType,
         int schemaVersion,
         EventTime eventTime,
-        EventPayload data
+        FeaturePayload data
 ) {
     public FeatureEvent {
         Objects.requireNonNull(eventId, "eventId is required");

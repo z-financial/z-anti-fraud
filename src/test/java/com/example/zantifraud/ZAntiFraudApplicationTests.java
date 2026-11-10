@@ -15,7 +15,6 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
-import java.math.BigInteger;
 import java.util.stream.Stream;
 
 import static org.hamcrest.Matchers.nullValue;
@@ -57,8 +56,8 @@ class ZAntiFraudApplicationTests {
 
     @Test
     void reportsUnconfiguredEngineWithoutIssuingDecision() throws Exception {
-        when(movements.queryTransferOutTotals(any(), any(), any(), any(), any()))
-                .thenReturn(new TransferOutTotals(0L, BigInteger.ZERO));
+        when(movements.queryTransferOutTotals(any(), any(), any(), any()))
+                .thenReturn(new TransferOutTotals(0L, 0L));
         mvc.perform(post("/api/v1/risk-evaluations")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(REQUEST))

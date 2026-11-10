@@ -21,7 +21,6 @@ public class AccountAssetMovementRepository {
                    coalesce(sum(toInt128(amount)), toInt128(0)) AS transfer_out_amount
             FROM account_asset_movements FINAL
             WHERE account_id = ?
-              AND currency = ?
               AND event_type = 'money_movement.transfer.out'
               AND event_time >= fromUnixTimestamp64Milli(?, 'UTC')
               AND event_time < fromUnixTimestamp64Milli(?, 'UTC')
@@ -37,18 +36,17 @@ public class AccountAssetMovementRepository {
         this.queryTimeoutSeconds = settings.queryTimeoutSeconds();
     }
 
-    public TransferOutTotals queryTransferOutTotals(String accountId, String currency,
+    public TransferOutTotals queryTransferOutTotals(String accountId,
                                                     Instant start, Instant end,
                                                     String excludedEventId) throws SQLException {
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(TRANSFER_OUT_TOTALS_SQL)) {
             statement.setQueryTimeout(queryTimeoutSeconds);
             statement.setString(1, accountId);
-            statement.setString(2, currency);
             // Numeric instants avoid JDBC/JVM default-timezone conversion.
-            statement.setLong(3, start.toEpochMilli());
-            statement.setLong(4, end.toEpochMilli());
-            statement.setString(5, excludedEventId);
+            statement.setLong(2, start.toEpochMilli());
+            statement.setLong(3, end.toEpochMilli());
+            statement.setString(4, excludedEventId);
             try (ResultSet result = statement.executeQuery()) {
                 if (!result.next()) {
                     throw new SQLException("Transfer totals query returned no aggregate row");
@@ -59,7 +57,7 @@ public class AccountAssetMovementRepository {
                     throw new SQLException("Transfer totals query returned null aggregates");
                 }
                 try {
-                    return new TransferOutTotals(count.longValueExact(), amount.toBigIntegerExact());
+                    return new TransferOutTotals(count.longValueExact(), amount.longValueExact());
                 } catch (ArithmeticException | IllegalArgumentException exception) {
                     throw new SQLException("Transfer totals cannot be represented exactly", exception);
                 }

@@ -6,14 +6,13 @@ import com.example.zantifraud.feature.persistence.clickhouse.AccountAssetMovemen
 import com.example.zantifraud.feature.persistence.clickhouse.model.TransferOutTotals;
 import org.junit.jupiter.api.Test;
 
-import java.math.BigInteger;
 import java.net.URI;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
 
-import static com.example.zantifraud.feature.service.ClickHouseFeatureService.*;
+import static com.example.zantifraud.feature.model.TransferFeatureKeys.*;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
@@ -24,14 +23,14 @@ class ClickHouseFeatureServiceTest {
 
     @Test
     void queriesSenderHistoryOnceForBothLegsAndDoesNotAddCurrentAmount() throws Exception {
-        BigInteger amount = BigInteger.valueOf(Long.MAX_VALUE).multiply(BigInteger.TWO);
-        when(movements.queryTransferOutTotals(any(), any(), any(), any(), any()))
+        long amount = Long.MAX_VALUE;
+        when(movements.queryTransferOutTotals(any(), any(), any(), any()))
                 .thenReturn(new TransferOutTotals(2L, amount));
 
         FeatureSnapshot result = service.queryFeatures(List.of(
                 event(InternalEventType.TRANSFER_IN), event(InternalEventType.TRANSFER_OUT)));
 
-        verify(movements).queryTransferOutTotals("account-1", "EUR",
+        verify(movements).queryTransferOutTotals("account-1",
                 Instant.parse("2026-10-31T22:00:00.123Z"),
                 Instant.parse("2026-11-01T22:00:00.123Z"), "current-event");
         verifyNoMoreInteractions(movements);
@@ -50,17 +49,17 @@ class ClickHouseFeatureServiceTest {
 
     @Test
     void emptyHistoryHasAvailableZeros() throws Exception {
-        when(movements.queryTransferOutTotals(any(), any(), any(), any(), any()))
-                .thenReturn(new TransferOutTotals(0L, BigInteger.ZERO));
+        when(movements.queryTransferOutTotals(any(), any(), any(), any()))
+                .thenReturn(new TransferOutTotals(0L, 0L));
         FeatureSnapshot result = service.queryFeatures(List.of(event(InternalEventType.TRANSFER_OUT)));
         assertThat(result.values()).containsEntry(TRANSFER_OUT_COUNT_24H, 0L)
-                .containsEntry(TRANSFER_OUT_AMOUNT_24H, BigInteger.ZERO);
+                .containsEntry(TRANSFER_OUT_AMOUNT_24H, 0L);
         assertThat(result.unavailableFeatures()).isEmpty();
     }
 
     @Test
     void databaseFailureMakesBothFeaturesUnavailableRatherThanZero() throws Exception {
-        when(movements.queryTransferOutTotals(any(), any(), any(), any(), any()))
+        when(movements.queryTransferOutTotals(any(), any(), any(), any()))
                 .thenThrow(new SQLException("connection failed"));
         FeatureSnapshot result = service.queryFeatures(List.of(event(InternalEventType.TRANSFER_OUT)));
         assertThat(result.values()).isEmpty();
@@ -73,7 +72,7 @@ class ClickHouseFeatureServiceTest {
         FeatureEvent valid = event(InternalEventType.TRANSFER_OUT);
         FeatureEvent invalid = new FeatureEvent(valid.eventId(), valid.sourceEventId(), valid.operationId(),
                 valid.correlationId(), valid.source(), valid.eventType(), valid.schemaVersion(), valid.eventTime(),
-                new EventPayload() { });
+                new FeaturePayload() { });
         assertThatThrownBy(() -> service.queryFeatures(List.of(invalid))).isInstanceOf(IllegalArgumentException.class);
         verifyNoInteractions(movements);
     }

@@ -13,7 +13,7 @@ public record TransferLeg(
         String accountId,
         Long amount,
         String currency
-) implements EventPayload {
+) implements FeaturePayload {
     public TransferLeg {
         Objects.requireNonNull(accountId, "accountId is required");
         Objects.requireNonNull(amount, "amount is required");

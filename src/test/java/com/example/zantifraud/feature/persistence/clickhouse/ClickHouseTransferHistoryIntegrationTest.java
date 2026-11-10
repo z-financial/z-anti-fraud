@@ -49,15 +49,15 @@ class ClickHouseTransferHistoryIntegrationTest {
                 try (PreparedStatement query = connection.prepareStatement(sql)) {
                     query.setQueryTimeout(10);
                     query.setString(1, "account-1");
-                    query.setString(2, "EUR");
-                    query.setLong(3, start.toEpochMilli());
-                    query.setLong(4, end.toEpochMilli());
-                    query.setString(5, "current-event");
+                    query.setLong(2, start.toEpochMilli());
+                    query.setLong(3, end.toEpochMilli());
+                    query.setString(4, "current-event");
                     try (ResultSet result = query.executeQuery()) {
                         assertThat(result.next()).isTrue();
-                        assertThat(result.getBigDecimal("transfer_out_count").longValueExact()).isEqualTo(2);
+                        assertThat(result.getBigDecimal("transfer_out_count").longValueExact()).isEqualTo(3);
                         assertThat(result.getBigDecimal("transfer_out_amount").toBigIntegerExact())
-                                .isEqualTo(BigInteger.valueOf(Long.MAX_VALUE).multiply(BigInteger.TWO).add(BigInteger.TEN));
+                                .isEqualTo(BigInteger.valueOf(Long.MAX_VALUE).multiply(BigInteger.TWO)
+                                        .add(BigInteger.valueOf(1010)));
                     }
                     query.setString(1, "no-history");
                     try (ResultSet result = query.executeQuery()) {

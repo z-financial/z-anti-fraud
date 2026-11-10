@@ -4,13 +4,16 @@ import com.example.zantifraud.evaluation.api.http.request.JsonEventEnvelope;
 import com.example.zantifraud.evaluation.api.http.request.RiskEvaluationRequest;
 import com.example.zantifraud.evaluation.api.http.response.RiskEvaluationResponse;
 import com.example.zantifraud.evaluation.model.EvaluationStatus;
+import com.example.zantifraud.evaluation.rule.RuleEngine;
 import com.example.zantifraud.event.mapping.EventAdaptationException;
 import com.example.zantifraud.event.mapping.EventAdapterRegistry;
 import com.example.zantifraud.event.mapping.TransferEventAdapter;
+import com.example.zantifraud.event.model.EventModel;
 import com.example.zantifraud.event.model.FeatureEvent;
 import com.example.zantifraud.event.model.InternalEventType;
 import com.example.zantifraud.event.model.EventTime;
 import com.example.zantifraud.event.model.EventType;
+import com.example.zantifraud.event.model.Transfer;
 import com.example.zantifraud.event.model.TransferLeg;
 import com.example.zantifraud.feature.model.FeatureSnapshot;
 import com.example.zantifraud.feature.service.FeatureService;
@@ -35,22 +38,28 @@ class RiskEvaluationCoordinatorTest {
     private final TransferEventAdapter adapter = new TransferEventAdapter(mapper);
     private final EventAdapterRegistry registry = new EventAdapterRegistry(List.of(adapter));
     private final FeatureService features = mock(FeatureService.class);
-    private final RiskEvaluationCoordinator coordinator = new RiskEvaluationCoordinator(registry, features);
+    private final RuleEngine rules = mock(RuleEngine.class);
+    private final RiskEvaluationCoordinator coordinator = new RiskEvaluationCoordinator(registry, features, rules);
 
     @Test
-    void persistsAndQueriesTheSameBatchWhileResponseKeepsUpstreamIdentity() throws Exception {
+    void evaluatesTheDecodedEventAndSnapshotAfterPersistenceAndFeatureLookup() throws Exception {
         JsonEventEnvelope envelope = envelope("urn:service:transfers", 1, "9223372036854775807");
-        when(features.queryFeatures(any())).thenReturn(new FeatureSnapshot(Map.of(), Set.of()));
+        FeatureSnapshot snapshot = new FeatureSnapshot(Map.of(), Set.of());
+        when(features.queryFeatures(any())).thenReturn(snapshot);
 
         RiskEvaluationResponse response = coordinator.evaluate(request(envelope));
 
         ArgumentCaptor<List<FeatureEvent>> captured = ArgumentCaptor.captor();
-        InOrder calls = inOrder(features);
+        InOrder calls = inOrder(features, rules);
         calls.verify(features).persistEvents(captured.capture());
         assertThat(captured.getValue()).hasSize(2);
         FeatureEvent outgoing = captured.getValue().get(0);
         FeatureEvent incoming = captured.getValue().get(1);
         calls.verify(features).queryFeatures(same(captured.getValue()));
+        EventModel decoded = new EventModel(envelope.eventId(), envelope.operationId(), envelope.correlationId(),
+                envelope.source(), EventType.TRANSFER, envelope.schemaVersion(), envelope.eventTime(),
+                new Transfer("account-1", "account-2", Long.MAX_VALUE, "EUR"));
+        calls.verify(rules).evaluate(eq(decoded), same(snapshot));
         calls.verifyNoMoreInteractions();
         assertThat(outgoing.eventType()).isEqualTo(InternalEventType.TRANSFER_OUT);
         assertThat(incoming.eventType()).isEqualTo(InternalEventType.TRANSFER_IN);

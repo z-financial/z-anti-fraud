@@ -16,8 +16,8 @@ then returns an `AdaptedEvent` with the decoded `EventModel` and an immutable
 with an `EventPayload` in place of the envelope's JSON data. The coordinator
 passes the derived list to `FeatureService.persistEvents` and then to
 `FeatureService.queryFeatures`. V1 builds one snapshot using the sender's
-`TRANSFER_OUT` leg. The decoded event and snapshot are the intended inputs
-to rule evaluation once it is implemented.
+`TRANSFER_OUT` leg. The coordinator passes the decoded event and snapshot to
+`RuleEngine.evaluate`, which returns a `RuleEvaluation`.
 
 The MVP registers `TransferEventAdapter` for `TRANSFER` (`money_movement.transfer`)
 from `urn:service:transfers`, schema version 1. It parses `Transfer` and derives
@@ -29,12 +29,12 @@ Multiple adapters claiming the same type/source key fail application startup.
 This source registration is routing configuration, not caller authentication.
 
 `ClickHouseFeatureService.queryFeatures` reads the 24-hour outgoing transfer count
-and amount from ClickHouse for the OUT leg's account. `persistEvents` remains a
-no-op; this change implements history reads only. Valid supported events still
-return HTTP 503 with `EVALUATION_NOT_CONFIGURED`; no decision is issued.
+and amount from ClickHouse for the OUT leg's account. `persistEvents` is a
+placeholder. The API returns HTTP 503 with `EVALUATION_NOT_CONFIGURED` until
+the decision engine is implemented.
 
 Authentication/source authorization, durable idempotency, received-time stamping,
-rules, decision policy, and persistence remain unimplemented.
+decision policy, and persistence remain unimplemented.
 Authentication/source authorization must precede routing, and idempotency must
 precede mutation when those operations are added.
 
@@ -137,14 +137,14 @@ submissions or retain it separately. No existing database is migrated automatica
 
 ## Transfer history features
 
-The coordinator selects the sender's `TRANSFER_OUT` leg. The feature service
-queries submitted outgoing history (`money_movement.transfer.out`) for that leg's
-`accountId` and `currency`:
+The feature service selects the sender's `TRANSFER_OUT` leg and queries submitted
+outgoing history (`money_movement.transfer.out`) for that leg's `accountId`.
+It aggregates raw upstream units across currencies.
 
 | Feature key | Java value | Meaning |
 | --- | --- | --- |
 | `transfer-out-count-24h` | `Long` | Distinct `operation_id` values among matching OUT legs. |
-| `transfer-out-amount-24h` | `BigInteger` | Sum of matching OUT leg amounts in upstream integer units. |
+| `transfer-out-amount-24h` | `Long` | Sum of matching OUT leg amounts in upstream integer units. |
 
 The window is `[eventTime - 24 hours, eventTime)`, using the event's UTC instant
 truncated to milliseconds, consistent with storage. It is an elapsed 24 hours,
@@ -156,9 +156,10 @@ other legs of the same operation. It does not add the current event's amount.
 `AccountAssetMovementRepository` uses `FINAL`, `uniqExact(operation_id)`,
 and `sum(toInt128(amount))` in a single parameterized query. Multiple outgoing
 legs of one operation contribute once to the count and each contributes to the
-amount. Incoming legs and other accounts/currencies are excluded. A successful
-empty-history query returns zero values. Failed queries mark both feature keys
-unavailable and supply no values; missing history is never treated as zero.
+amount. Incoming legs and other accounts are excluded. A successful
+empty-history query returns zero values. The repository converts both aggregates
+to signed 64-bit integers exactly. Failed queries and out-of-range aggregates
+mark both feature keys unavailable.
 Late arrivals remain subject to the agreed eventual-consistency semantics.
 
 Configure `CLICKHOUSE_JDBC_URL` (default
@@ -174,7 +175,17 @@ ClickHouse when `CLICKHOUSE_TEST_JDBC_URL` is set (plus optional
 `CLICKHOUSE_TEST_USERNAME` and `CLICKHOUSE_TEST_PASSWORD`). Use a test database:
 the test creates and drops a uniquely named table there. It checks retry
 deduplication, distinct operations, filtering, time boundaries, current-event
-exclusion, empty history, and totals exceeding Int64. Without that URL it is skipped.
+exclusion, cross-currency aggregation, empty history, and totals exceeding Int64.
+Without that URL it is skipped.
+
+## Transfer amount rule
+
+The rule adds the current transfer amount to the sender's 24-hour outgoing
+amount. It returns `MATCHED` above the limit and `NOT_MATCHED` at or below it.
+Missing or unusable history yields `UNAVAILABLE`. Configure a positive 64-bit integer
+limit with `risk.rules.transfer-out-amount-24h-limit` or the
+`TRANSFER_OUT_AMOUNT_24H_LIMIT` environment variable. The default is 100000
+upstream units.
 
 ## Current response
 
@@ -190,7 +201,7 @@ HTTP 503:
   "recommendedAction": null,
   "reasons": [{
     "code": "EVALUATION_NOT_CONFIGURED",
-    "message": "The risk evaluation engine is not configured.",
+    "message": "The decision engine is not configured.",
     "ruleId": null
   }],
   "ruleSetVersion": null,

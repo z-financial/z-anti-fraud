@@ -1,7 +1,7 @@
 package com.example.zantifraud.feature.persistence.clickhouse.model;
 
 import com.example.zantifraud.event.model.FeatureEvent;
-import com.example.zantifraud.event.model.EventPayload;
+import com.example.zantifraud.event.model.FeaturePayload;
 import com.example.zantifraud.event.model.EventTime;
 import com.example.zantifraud.event.model.InternalEventType;
 import com.example.zantifraud.event.model.TransferLeg;
@@ -56,14 +56,14 @@ class AccountAssetMovementRowTest {
 
     @Test
     void rejectsPayloadThatDoesNotMatchTheTransferInternalEventType() {
-        FeatureEvent event = event("event-1", InternalEventType.TRANSFER_OUT, new EventPayload() { });
+        FeatureEvent event = event("event-1", InternalEventType.TRANSFER_OUT, new FeaturePayload() { });
 
         assertThatThrownBy(() -> AccountAssetMovementRow.from(event, RECEIVED_AT))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("A submitted transfer leg is required");
     }
 
-    private FeatureEvent event(String id, InternalEventType type, EventPayload payload) {
+    private FeatureEvent event(String id, InternalEventType type, FeaturePayload payload) {
         return new FeatureEvent(id, "source-1", "operation-1", "deal-1", URI.create("urn:service:transfers"), type, 1,
                 new EventTime(OffsetDateTime.parse("2026-11-01T00:00:00.123999999+02:00"),
                         EventTime.Precision.NANOSECOND), payload);

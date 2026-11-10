@@ -18,10 +18,11 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
+import static com.example.zantifraud.feature.model.TransferFeatureKeys.TRANSFER_OUT_AMOUNT_24H;
+import static com.example.zantifraud.feature.model.TransferFeatureKeys.TRANSFER_OUT_COUNT_24H;
+
 @Service
 public class ClickHouseFeatureService implements FeatureService {
-    public static final String TRANSFER_OUT_COUNT_24H = "transfer-out-count-24h";
-    public static final String TRANSFER_OUT_AMOUNT_24H = "transfer-out-amount-24h";
     private static final Set<String> TRANSFER_FEATURES = Set.of(TRANSFER_OUT_COUNT_24H, TRANSFER_OUT_AMOUNT_24H);
     private static final Logger log = LoggerFactory.getLogger(ClickHouseFeatureService.class);
 
@@ -62,7 +63,7 @@ public class ClickHouseFeatureService implements FeatureService {
         Instant start = end.minus(24, ChronoUnit.HOURS);
         try {
             TransferOutTotals totals = movements.queryTransferOutTotals(
-                    transfer.accountId(), transfer.currency(), start, end, outgoing.eventId());
+                    transfer.accountId(), start, end, outgoing.eventId());
             return new FeatureSnapshot(Map.of(
                     TRANSFER_OUT_COUNT_24H, totals.count(),
                     TRANSFER_OUT_AMOUNT_24H, totals.amount()), Set.of());
