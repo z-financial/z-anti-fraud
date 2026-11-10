@@ -3,8 +3,10 @@ package com.example.zantifraud.evaluation.service;
 import com.example.zantifraud.evaluation.api.http.request.JsonEventEnvelope;
 import com.example.zantifraud.evaluation.api.http.request.RiskEvaluationRequest;
 import com.example.zantifraud.evaluation.api.http.response.RiskEvaluationResponse;
-import com.example.zantifraud.evaluation.model.EvaluationStatus;
+import com.example.zantifraud.evaluation.decision.DecisionEngine;
+import com.example.zantifraud.evaluation.model.RiskEvaluationStatus;
 import com.example.zantifraud.evaluation.rule.RuleEngine;
+import com.example.zantifraud.evaluation.rule.RuleEvaluation;
 import com.example.zantifraud.event.mapping.EventAdaptationException;
 import com.example.zantifraud.event.mapping.EventAdapterRegistry;
 import com.example.zantifraud.event.mapping.TransferEventAdapter;
@@ -39,13 +41,15 @@ class RiskEvaluationCoordinatorTest {
     private final EventAdapterRegistry registry = new EventAdapterRegistry(List.of(adapter));
     private final FeatureService features = mock(FeatureService.class);
     private final RuleEngine rules = mock(RuleEngine.class);
-    private final RiskEvaluationCoordinator coordinator = new RiskEvaluationCoordinator(registry, features, rules);
+    private final RiskEvaluationCoordinator coordinator =
+            new RiskEvaluationCoordinator(registry, features, rules, new DecisionEngine());
 
     @Test
     void evaluatesTheDecodedEventAndSnapshotAfterPersistenceAndFeatureLookup() throws Exception {
         JsonEventEnvelope envelope = envelope("urn:service:transfers", 1, "9223372036854775807");
         FeatureSnapshot snapshot = new FeatureSnapshot(Map.of(), Set.of());
         when(features.queryFeatures(any())).thenReturn(snapshot);
+        when(rules.evaluate(any(), any())).thenReturn(new RuleEvaluation(List.of()));
 
         RiskEvaluationResponse response = coordinator.evaluate(request(envelope));
 
@@ -77,7 +81,7 @@ class RiskEvaluationCoordinatorTest {
         assertThat(response.eventId()).isEqualTo(envelope.eventId());
         assertThat(response.operationId()).isEqualTo(envelope.operationId());
         assertThat(response.requestId()).isEqualTo("req-1");
-        assertThat(response.status()).isEqualTo(EvaluationStatus.UNAVAILABLE);
+        assertThat(response.status()).isEqualTo(RiskEvaluationStatus.UNAVAILABLE);
         assertThat(response.decisionId()).isNull();
         assertThat(response.recommendedAction()).isNull();
     }

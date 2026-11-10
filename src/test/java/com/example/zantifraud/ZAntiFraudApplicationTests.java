@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -15,6 +16,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
+import java.sql.SQLException;
 import java.util.stream.Stream;
 
 import static org.hamcrest.Matchers.nullValue;
@@ -24,7 +26,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest
+@SpringBootTest(properties = "risk.rules.transfer-out-amount-24h-limit=100000")
 @AutoConfigureMockMvc
 class ZAntiFraudApplicationTests {
     private static final String REQUEST = """
@@ -54,10 +56,36 @@ class ZAntiFraudApplicationTests {
     void contextLoads() {
     }
 
-    @Test
-    void reportsUnconfiguredEngineWithoutIssuingDecision() throws Exception {
+    @ParameterizedTest
+    @CsvSource({"90000, ALLOW", "90001, BLOCK"})
+    void returnsTheRecommendationAndDecisionMetadata(long history, String action) throws Exception {
         when(movements.queryTransferOutTotals(any(), any(), any(), any()))
-                .thenReturn(new TransferOutTotals(0L, 0L));
+                .thenReturn(new TransferOutTotals(1L, history));
+        var result = mvc.perform(post("/api/v1/risk-evaluations")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(REQUEST))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.requestId").value("req-1"))
+                .andExpect(jsonPath("$.eventId").value("evt-1"))
+                .andExpect(jsonPath("$.operationId").value("transfer-1"))
+                .andExpect(jsonPath("$.status").value("COMPLETED"))
+                .andExpect(jsonPath("$.recommendedAction").value(action))
+                .andExpect(jsonPath("$.decisionId").isNotEmpty())
+                .andExpect(jsonPath("$.ruleSetVersion").value("rules-v1"))
+                .andExpect(jsonPath("$.policyVersion").value("policy-v1"))
+                .andExpect(jsonPath("$.evaluatedAt").isNotEmpty());
+        if ("BLOCK".equals(action)) {
+            result.andExpect(jsonPath("$.reasons[0].code").value("TRANSFER_OUT_AMOUNT_24H_LIMIT_EXCEEDED"))
+                    .andExpect(jsonPath("$.reasons[0].ruleId").value("transfer-out-amount-24h-limit"));
+        } else {
+            result.andExpect(jsonPath("$.reasons").isEmpty());
+        }
+    }
+
+    @Test
+    void returnsUnavailableWhenRequiredHistoryCannotBeRead() throws Exception {
+        when(movements.queryTransferOutTotals(any(), any(), any(), any()))
+                .thenThrow(new SQLException("History is unavailable"));
         mvc.perform(post("/api/v1/risk-evaluations")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(REQUEST))
@@ -66,7 +94,8 @@ class ZAntiFraudApplicationTests {
                 .andExpect(jsonPath("$.status").value("UNAVAILABLE"))
                 .andExpect(jsonPath("$.recommendedAction").value(nullValue()))
                 .andExpect(jsonPath("$.decisionId").value(nullValue()))
-                .andExpect(jsonPath("$.reasons[0].code").value("EVALUATION_NOT_CONFIGURED"));
+                .andExpect(jsonPath("$.reasons[0].code").value("TRANSFER_OUT_HISTORY_UNAVAILABLE"))
+                .andExpect(jsonPath("$.reasons[0].ruleId").value("transfer-out-amount-24h-limit"));
     }
 
     @ParameterizedTest

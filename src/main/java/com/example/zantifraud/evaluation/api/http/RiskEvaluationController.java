@@ -1,6 +1,6 @@
 package com.example.zantifraud.evaluation.api.http;
 
-import com.example.zantifraud.evaluation.model.EvaluationStatus;
+import com.example.zantifraud.evaluation.model.RiskEvaluationStatus;
 import com.example.zantifraud.evaluation.api.http.request.RiskEvaluationRequest;
 import com.example.zantifraud.evaluation.api.http.response.RiskEvaluationResponse;
 import com.example.zantifraud.evaluation.service.RiskEvaluationCoordinator;
@@ -24,7 +24,7 @@ public class RiskEvaluationController {
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<RiskEvaluationResponse> evaluate(@RequestBody RiskEvaluationRequest request) {
         RiskEvaluationResponse response = coordinator.evaluate(request);
-        HttpStatus status = response.status() == EvaluationStatus.UNAVAILABLE
+        HttpStatus status = response.status() == RiskEvaluationStatus.UNAVAILABLE
                 ? HttpStatus.SERVICE_UNAVAILABLE : HttpStatus.OK;
         return ResponseEntity.status(status).body(response);
     }

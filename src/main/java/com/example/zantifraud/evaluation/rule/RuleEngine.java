@@ -15,6 +15,8 @@ import static com.example.zantifraud.feature.model.TransferFeatureKeys.TRANSFER_
 /** Evaluates the V1 rules and reports findings for the decision policy. */
 @Component
 public class RuleEngine {
+    public static final String RULE_SET_VERSION = "rules-v1";
+
     private static final String TRANSFER_OUT_LIMIT_RULE = "transfer-out-amount-24h-limit";
 
     private final Long transferOutAmount24hLimit;

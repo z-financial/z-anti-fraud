@@ -17,7 +17,7 @@ with an `EventPayload` in place of the envelope's JSON data. The coordinator
 passes the derived list to `FeatureService.persistEvents` and then to
 `FeatureService.queryFeatures`. V1 builds one snapshot using the sender's
 `TRANSFER_OUT` leg. The coordinator passes the decoded event and snapshot to
-`RuleEngine.evaluate`, which returns a `RuleEvaluation`.
+`RuleEngine.evaluate`, then passes the findings to `DecisionEngine.decide`.
 
 The MVP registers `TransferEventAdapter` for `TRANSFER` (`money_movement.transfer`)
 from `urn:service:transfers`, schema version 1. It parses `Transfer` and derives
@@ -30,11 +30,10 @@ This source registration is routing configuration, not caller authentication.
 
 `ClickHouseFeatureService.queryFeatures` reads the 24-hour outgoing transfer count
 and amount from ClickHouse for the OUT leg's account. `persistEvents` is a
-placeholder. The API returns HTTP 503 with `EVALUATION_NOT_CONFIGURED` until
-the decision engine is implemented.
+placeholder.
 
 Authentication/source authorization, durable idempotency, received-time stamping,
-decision policy, and persistence remain unimplemented.
+and persistence remain unimplemented.
 Authentication/source authorization must precede routing, and idempotency must
 precede mutation when those operations are added.
 
@@ -187,9 +186,16 @@ limit with `risk.rules.transfer-out-amount-24h-limit` or the
 `TRANSFER_OUT_AMOUNT_24H_LIMIT` environment variable. The default is 100000
 upstream units.
 
-## Current response
+## Decision policy
 
-HTTP 503:
+Any matched rule means a violation and produces `COMPLETED` with `BLOCK`.
+The response includes the matched rule IDs and reason codes. If no rules match
+and a required rule is unavailable, the evaluation is `UNAVAILABLE`. An empty
+rule evaluation is also `UNAVAILABLE`, with reason `NO_APPLICABLE_RULES`.
+When all applicable rules run and none match, the result is `COMPLETED`
+with `ALLOW`.
+
+Example HTTP 503 response when transfer history is unavailable.
 
 ```json
 {
@@ -200,9 +206,9 @@ HTTP 503:
   "status": "UNAVAILABLE",
   "recommendedAction": null,
   "reasons": [{
-    "code": "EVALUATION_NOT_CONFIGURED",
-    "message": "The decision engine is not configured.",
-    "ruleId": null
+    "code": "TRANSFER_OUT_HISTORY_UNAVAILABLE",
+    "message": "A required risk rule could not be evaluated.",
+    "ruleId": "transfer-out-amount-24h-limit"
   }],
   "ruleSetVersion": null,
   "policyVersion": null,
@@ -214,7 +220,7 @@ HTTP 503:
 
 | HTTP | Evaluation status | Meaning |
 | --- | --- | --- |
-| 200 | COMPLETED | Required evidence evaluated; recommendation is ALLOW or BLOCK. |
+| 200 | COMPLETED | The policy reached an ALLOW or BLOCK recommendation. |
 | 200 | DEGRADED | Explicit fallback policy produced a recommendation with incomplete evidence. |
 | 503 | UNAVAILABLE | No recommendation; decision metadata is null. |
 | 400 | Not applicable | Malformed JSON or invalid envelope/request; problem-details body with `code: INVALID_REQUEST`. |
@@ -233,11 +239,11 @@ Reasons contain a stable `code`, a human-readable `message`, and an optional
 `ruleId`. Clients should use codes rather than parsing messages. Detailed feature
 values and rule evidence belong in the future internal audit record.
 
-When decision evaluation is implemented, successful responses must include a stored
-decision ID, rule-set and policy versions, and evaluation timestamp. Retries must
-return the original decision with the current attempt's request ID. Conflicting
-reuse of an idempotency key must return HTTP 409; this is not implemented by the
-MVP coordinator. Concurrent retries must resolve to the same logical evaluation.
+Successful responses include a decision ID, rule-set and policy versions, and
+evaluation timestamp. The MVP generates a new UUID and timestamp per attempt.
+Durable replay will return the original decision with the current attempt's request
+ID, return HTTP 409 for conflicting reuse of an idempotency key, and resolve
+concurrent retries to the same logical evaluation.
 
 ## Run locally
 

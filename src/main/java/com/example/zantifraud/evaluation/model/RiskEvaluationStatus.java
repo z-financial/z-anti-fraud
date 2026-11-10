@@ -1,6 +1,6 @@
 package com.example.zantifraud.evaluation.model;
 
-public enum EvaluationStatus {
+public enum RiskEvaluationStatus {
     COMPLETED,
     DEGRADED,
     UNAVAILABLE

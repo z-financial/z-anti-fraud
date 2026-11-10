@@ -1,8 +1,8 @@
 package com.example.zantifraud.evaluation.api.http;
 
 import com.example.zantifraud.evaluation.model.DecisionReason;
-import com.example.zantifraud.evaluation.model.EvaluationStatus;
 import com.example.zantifraud.evaluation.model.RecommendedAction;
+import com.example.zantifraud.evaluation.model.RiskEvaluationStatus;
 import com.example.zantifraud.evaluation.api.http.request.RiskEvaluationRequest;
 import com.example.zantifraud.evaluation.api.http.response.RiskEvaluationResponse;
 import com.example.zantifraud.evaluation.service.RiskEvaluationCoordinator;
@@ -67,7 +67,7 @@ class RiskEvaluationControllerTest {
             assertThat(request.event().eventType().wireValue()).isEqualTo("money_movement.transfer");
             assertThat(request.event().eventTime().value().toInstant())
                     .isEqualTo(Instant.parse("2026-11-09T12:00:00Z"));
-            return decision(request, EvaluationStatus.COMPLETED, action);
+            return decision(request, RiskEvaluationStatus.COMPLETED, action);
         });
 
         mvc.perform(post(PATH).contentType(MediaType.APPLICATION_JSON).content(REQUEST))
@@ -88,7 +88,7 @@ class RiskEvaluationControllerTest {
     @Test
     void returnsDegradedRecommendation() throws Exception {
         when(coordinator.evaluate(any())).thenAnswer(invocation ->
-                decision(invocation.getArgument(0), EvaluationStatus.DEGRADED, RecommendedAction.BLOCK));
+                decision(invocation.getArgument(0), RiskEvaluationStatus.DEGRADED, RecommendedAction.BLOCK));
 
         mvc.perform(post(PATH).contentType(MediaType.APPLICATION_JSON).content(REQUEST))
                 .andExpect(status().isOk())
@@ -99,7 +99,7 @@ class RiskEvaluationControllerTest {
     @Test
     void returnsUnavailableWithoutRecommendation() throws Exception {
         when(coordinator.evaluate(any())).thenReturn(new RiskEvaluationResponse(
-                "req-1", null, "evt-1", "transfer-1", EvaluationStatus.UNAVAILABLE, null,
+                "req-1", null, "evt-1", "transfer-1", RiskEvaluationStatus.UNAVAILABLE, null,
                 List.of(new DecisionReason("HISTORY_UNAVAILABLE", "Required history is unavailable.", null)),
                 null, null, null));
 
@@ -156,7 +156,7 @@ class RiskEvaluationControllerTest {
     }
 
     private static RiskEvaluationResponse decision(RiskEvaluationRequest request,
-                                                   EvaluationStatus status, RecommendedAction action) {
+                                                   RiskEvaluationStatus status, RecommendedAction action) {
         return new RiskEvaluationResponse(request.requestId(), "decision-1", request.event().eventId(),
                 request.event().operationId(), status, action,
                 List.of(new DecisionReason("TEST_POLICY", "Test policy result.", "test-rule")),

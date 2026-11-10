@@ -1,8 +1,8 @@
 package com.example.zantifraud.evaluation.api.http.response;
 
 import com.example.zantifraud.evaluation.model.DecisionReason;
-import com.example.zantifraud.evaluation.model.EvaluationStatus;
 import com.example.zantifraud.evaluation.model.RecommendedAction;
+import com.example.zantifraud.evaluation.model.RiskEvaluationStatus;
 
 import java.time.Instant;
 import java.util.List;
@@ -10,17 +10,17 @@ import java.util.Objects;
 
 /**
  * Evaluation outcome, distinct from business execution.
- * Completed/degraded outcomes require a recommendation and persisted decision
+ * Completed/degraded outcomes require a recommendation and decision
  * metadata. An unavailable outcome has no recommendation or decision metadata.
- * On replay, requestId identifies the current attempt; decision metadata stays
- * unchanged. A normal best-effort history read does not itself mean DEGRADED.
+ * requestId identifies the current attempt. Decision metadata is issued per evaluation
+ * until durable replay is implemented.
  */
 public record RiskEvaluationResponse(
         String requestId,
         String decisionId,
         String eventId,
         String operationId,
-        EvaluationStatus status,
+        RiskEvaluationStatus status,
         RecommendedAction recommendedAction,
         List<DecisionReason> reasons,
         String ruleSetVersion,
@@ -33,7 +33,7 @@ public record RiskEvaluationResponse(
         requireText(operationId, "operationId");
         Objects.requireNonNull(status, "status is required");
         reasons = List.copyOf(reasons);
-        if (status == EvaluationStatus.UNAVAILABLE) {
+        if (status == RiskEvaluationStatus.UNAVAILABLE) {
             if (recommendedAction != null || decisionId != null || ruleSetVersion != null
                     || policyVersion != null || evaluatedAt != null) {
                 throw new IllegalArgumentException("Unavailable evaluation cannot carry decision metadata");
