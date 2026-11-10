@@ -20,8 +20,7 @@ public enum EventType {
     ACCOUNT_VERIFICATION_COMPLETED("account.verification.completed"),
     ACCOUNT_RECOVERY_REQUESTED("account.recovery.requested"),
 
-    TRANSFER_REQUESTED("money_movement.transfer.requested"),
-    TRANSFER_COMPLETED("money_movement.transfer.completed"),
+    TRANSFER("money_movement.transfer"),
     WITHDRAWAL_REQUESTED("money_movement.withdrawal.requested"),
     PAYMENT_REQUESTED("money_movement.payment.requested"),
 

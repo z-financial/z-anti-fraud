@@ -1,7 +1,6 @@
 package com.example.zantifraud.event.mapping;
 
 import com.example.zantifraud.evaluation.api.http.request.JsonEventEnvelope;
-import com.example.zantifraud.event.model.EventModel;
 
 import java.util.Set;
 
@@ -9,5 +8,6 @@ import java.util.Set;
 public interface EventAdapter {
     Set<EventAdapterKey> supportedEvents();
 
-    EventModel adapt(JsonEventEnvelope envelope);
+    /** Returns the decoded event and feature events with distinct, stable IDs. */
+    AdaptedEvent adapt(JsonEventEnvelope envelope);
 }

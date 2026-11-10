@@ -6,19 +6,19 @@ import com.example.zantifraud.evaluation.api.http.response.RiskEvaluationRespons
 import com.example.zantifraud.evaluation.model.EvaluationStatus;
 import com.example.zantifraud.event.mapping.EventAdaptationException;
 import com.example.zantifraud.event.mapping.EventAdapterRegistry;
-import com.example.zantifraud.event.mapping.TransferRequestedEventAdapter;
-import com.example.zantifraud.event.model.EventModel;
+import com.example.zantifraud.event.mapping.TransferEventAdapter;
+import com.example.zantifraud.event.model.FeatureEvent;
+import com.example.zantifraud.event.model.InternalEventType;
 import com.example.zantifraud.event.model.EventTime;
 import com.example.zantifraud.event.model.EventType;
-import com.example.zantifraud.event.model.TransferRequested;
+import com.example.zantifraud.event.model.TransferLeg;
 import com.example.zantifraud.feature.model.FeatureSnapshot;
-import com.example.zantifraud.feature.service.EmptyFeatureService;
 import com.example.zantifraud.feature.service.FeatureService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 
-import java.math.BigDecimal;
 import java.net.URI;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -28,35 +28,45 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 class RiskEvaluationCoordinatorTest {
     private final ObjectMapper mapper = new ObjectMapper();
-    private final TransferRequestedEventAdapter adapter = new TransferRequestedEventAdapter(mapper);
+    private final TransferEventAdapter adapter = new TransferEventAdapter(mapper);
     private final EventAdapterRegistry registry = new EventAdapterRegistry(List.of(adapter));
     private final FeatureService features = mock(FeatureService.class);
     private final RiskEvaluationCoordinator coordinator = new RiskEvaluationCoordinator(registry, features);
 
     @Test
-    void passesTypedEventAndMetadataToFeatureServiceWithoutIssuingDecision() throws Exception {
-        JsonEventEnvelope envelope = envelope("urn:service:transfers", 1, "123456789.123456789");
-        when(features.queryFeatures(any(), eq(Set.of())))
-                .thenReturn(new FeatureSnapshot(Map.of(), Set.of()));
+    void persistsAndQueriesTheSameBatchWhileResponseKeepsUpstreamIdentity() throws Exception {
+        JsonEventEnvelope envelope = envelope("urn:service:transfers", 1, "9223372036854775807");
+        when(features.queryFeatures(any())).thenReturn(new FeatureSnapshot(Map.of(), Set.of()));
 
         RiskEvaluationResponse response = coordinator.evaluate(request(envelope));
 
-        ArgumentCaptor<EventModel> captured = ArgumentCaptor.forClass(EventModel.class);
-        verify(features).queryFeatures(captured.capture(), eq(Set.of()));
-        EventModel event = captured.getValue();
-        assertThat(event.data()).isEqualTo(new TransferRequested(new BigDecimal("123456789.123456789"), "EUR"));
-        assertThat(event.eventId()).isEqualTo(envelope.eventId());
-        assertThat(event.operationId()).isEqualTo(envelope.operationId());
-        assertThat(event.correlationId()).isEqualTo(envelope.correlationId());
-        assertThat(event.source()).isEqualTo(envelope.source());
-        assertThat(event.eventType()).isEqualTo(envelope.eventType());
-        assertThat(event.schemaVersion()).isEqualTo(envelope.schemaVersion());
-        assertThat(event.eventTime()).isEqualTo(envelope.eventTime());
+        ArgumentCaptor<List<FeatureEvent>> captured = ArgumentCaptor.captor();
+        InOrder calls = inOrder(features);
+        calls.verify(features).persistEvents(captured.capture());
+        assertThat(captured.getValue()).hasSize(2);
+        FeatureEvent outgoing = captured.getValue().get(0);
+        FeatureEvent incoming = captured.getValue().get(1);
+        calls.verify(features).queryFeatures(same(captured.getValue()));
+        calls.verifyNoMoreInteractions();
+        assertThat(outgoing.eventType()).isEqualTo(InternalEventType.TRANSFER_OUT);
+        assertThat(incoming.eventType()).isEqualTo(InternalEventType.TRANSFER_IN);
+        assertThat(outgoing.data()).isEqualTo(new TransferLeg("account-1", Long.MAX_VALUE, "EUR"));
+        assertThat(incoming.data()).isEqualTo(new TransferLeg("account-2", Long.MAX_VALUE, "EUR"));
+        assertThat(outgoing.eventId()).isNotEqualTo(incoming.eventId()).isNotEqualTo(envelope.eventId());
+        for (FeatureEvent event : captured.getValue()) {
+            assertThat(event.sourceEventId()).isEqualTo(envelope.eventId());
+            assertThat(event.operationId()).isEqualTo(envelope.operationId());
+            assertThat(event.correlationId()).isEqualTo(envelope.correlationId());
+            assertThat(event.source()).isEqualTo(envelope.source());
+            assertThat(event.schemaVersion()).isEqualTo(envelope.schemaVersion());
+            assertThat(event.eventTime()).isEqualTo(envelope.eventTime());
+        }
+        assertThat(response.eventId()).isEqualTo(envelope.eventId());
+        assertThat(response.operationId()).isEqualTo(envelope.operationId());
         assertThat(response.requestId()).isEqualTo("req-1");
         assertThat(response.status()).isEqualTo(EvaluationStatus.UNAVAILABLE);
         assertThat(response.decisionId()).isNull();
@@ -64,7 +74,7 @@ class RiskEvaluationCoordinatorTest {
     }
 
     @Test
-    void doesNotQueryFeaturesForUnregisteredSource() throws Exception {
+    void doesNotCallFeatureServiceForUnregisteredSource() throws Exception {
         RiskEvaluationRequest request = request(envelope("urn:service:other", 1, "100"));
         assertThatThrownBy(() -> coordinator.evaluate(request))
                 .isInstanceOfSatisfying(EventAdaptationException.class,
@@ -73,7 +83,7 @@ class RiskEvaluationCoordinatorTest {
     }
 
     @Test
-    void doesNotQueryFeaturesForUnsupportedSchema() throws Exception {
+    void doesNotCallFeatureServiceForUnsupportedSchema() throws Exception {
         RiskEvaluationRequest request = request(envelope("urn:service:transfers", 2, "100"));
         assertThatThrownBy(() -> coordinator.evaluate(request))
                 .isInstanceOfSatisfying(EventAdaptationException.class,
@@ -82,7 +92,7 @@ class RiskEvaluationCoordinatorTest {
     }
 
     @Test
-    void doesNotQueryFeaturesForInvalidPayload() throws Exception {
+    void doesNotCallFeatureServiceForInvalidPayload() throws Exception {
         RiskEvaluationRequest request = request(envelope("urn:service:transfers", 1, "-100"));
         assertThatThrownBy(() -> coordinator.evaluate(request))
                 .isInstanceOfSatisfying(EventAdaptationException.class,
@@ -97,23 +107,16 @@ class RiskEvaluationCoordinatorTest {
                 .hasMessageContaining("Duplicate event adapter registration");
     }
 
-    @Test
-    void emptyFeatureServiceReportsMissingEvidenceRatherThanZero() throws Exception {
-        EventModel event = adapter.adapt(envelope("urn:service:transfers", 1, "100"));
-        EmptyFeatureService empty = new EmptyFeatureService();
-
-        FeatureSnapshot snapshot = empty.queryFeatures(event, Set.of("transfer_count_1h"));
-
-        assertThat(snapshot.values()).isEmpty();
-        assertThat(snapshot.unavailableFeatures()).containsExactly("transfer_count_1h");
-        assertThat(empty.queryFeatures(event, Set.of()).unavailableFeatures()).isEmpty();
+    private JsonEventEnvelope envelope(String source, int schemaVersion, String amount) throws Exception {
+        return envelope(EventType.TRANSFER, source, schemaVersion, amount);
     }
 
-    private JsonEventEnvelope envelope(String source, int schemaVersion, String amount) throws Exception {
+    private JsonEventEnvelope envelope(EventType type, String source, int schemaVersion, String amount) throws Exception {
         return new JsonEventEnvelope("evt-1", "transfer-1", "workflow-1", URI.create(source),
-                EventType.TRANSFER_REQUESTED, schemaVersion,
+                type, schemaVersion,
                 new EventTime(OffsetDateTime.parse("2026-11-10T12:00:00+02:00"), EventTime.Precision.SECOND),
-                mapper.readTree("{\"amount\": \"" + amount + "\", \"currency\": \"EUR\"}"));
+                mapper.readTree("{\"fromAccountId\": \"account-1\", \"toAccountId\": \"account-2\", "
+                        + "\"amount\": " + amount + ", \"currency\": \"EUR\"}"));
     }
 
     private RiskEvaluationRequest request(JsonEventEnvelope envelope) {

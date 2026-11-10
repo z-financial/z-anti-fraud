@@ -3,7 +3,7 @@ package com.example.zantifraud.event.model;
 import java.net.URI;
 import java.util.Objects;
 
-/** Internal event passed to features and rules; contains no JSON or Protobuf types. */
+/** Decoded business event with the upstream identity and typed data. */
 public record EventModel(
         String eventId,
         String operationId,
@@ -19,6 +19,7 @@ public record EventModel(
         Objects.requireNonNull(operationId, "operationId is required");
         Objects.requireNonNull(source, "source is required");
         Objects.requireNonNull(eventType, "eventType is required");
+        Objects.requireNonNull(eventTime, "eventTime is required");
         Objects.requireNonNull(data, "data is required");
         if (eventId.isBlank() || operationId.isBlank()) {
             throw new IllegalArgumentException("eventId and operationId must not be blank");

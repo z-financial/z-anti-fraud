@@ -40,10 +40,10 @@ class RiskEvaluationControllerTest {
                 "eventId": "evt-1",
                 "operationId": "transfer-1",
                 "source": "urn:service:transfers",
-                "eventType": "money_movement.transfer.requested",
+                "eventType": "money_movement.transfer",
                 "schemaVersion": 1,
                 "eventTime": {"value": "2026-11-09T14:00:00+02:00", "precision": "SECOND"},
-                "data": {"amount": "100.00", "currency": "EUR"}
+                "data": {"fromAccountId": "account-1", "toAccountId": "account-2", "amount": 10000, "currency": "EUR"}
               }
             }
             """;
@@ -63,8 +63,8 @@ class RiskEvaluationControllerTest {
         when(coordinator.evaluate(any())).thenAnswer(invocation -> {
             RiskEvaluationRequest request = invocation.getArgument(0);
             assertThat(request.decisionPoint()).isNull();
-            assertThat(request.event().data().get("amount").asText()).isEqualTo("100.00");
-            assertThat(request.event().eventType().wireValue()).isEqualTo("money_movement.transfer.requested");
+            assertThat(request.event().data().get("amount").longValue()).isEqualTo(10000L);
+            assertThat(request.event().eventType().wireValue()).isEqualTo("money_movement.transfer");
             assertThat(request.event().eventTime().value().toInstant())
                     .isEqualTo(Instant.parse("2026-11-09T12:00:00Z"));
             return decision(request, EvaluationStatus.COMPLETED, action);
@@ -122,7 +122,8 @@ class RiskEvaluationControllerTest {
     }
 
     static Stream<String> invalidRequests() {
-        String payload = "{\"amount\": \"100.00\", \"currency\": \"EUR\"}";
+        String payload = "{\"fromAccountId\": \"account-1\", \"toAccountId\": \"account-2\", \"amount\": 10000, \"currency\": \"EUR\"}";
+        String eventTime = "\"eventTime\": {\"value\": \"2026-11-09T14:00:00+02:00\", \"precision\": \"SECOND\"}";
         return Stream.of(
                 "{", "null", "{}",
                 REQUEST.replace("\"requestId\": \"req-1\",", ""),
@@ -131,10 +132,12 @@ class RiskEvaluationControllerTest {
                 REQUEST.replace("\"evt-1\"", "null"),
                 REQUEST.replace("\"transfer-1\"", "\"\""),
                 REQUEST.replace("urn:service:transfers", "relative-source"),
-                REQUEST.replace("money_movement.transfer.requested", "unknown.event"),
-                REQUEST.replace("money_movement.transfer.requested", "TRANSFER_REQUESTED"),
+                REQUEST.replace("money_movement.transfer", "unknown.event"),
+                REQUEST.replace("money_movement.transfer", "TRANSFER"),
                 REQUEST.replace("\"schemaVersion\": 1", "\"schemaVersion\": 0"),
                 REQUEST.replace("2026-11-09T14:00:00+02:00", "2026-11-09T14:00:00"),
+                REQUEST.replace(eventTime + ",", ""),
+                REQUEST.replace(eventTime, "\"eventTime\": null"),
                 REQUEST.replace(payload, "null"),
                 REQUEST.replace(payload, "[]"),
                 REQUEST.replace(payload, "\"escaped JSON text\""),
@@ -144,12 +147,12 @@ class RiskEvaluationControllerTest {
     @Test
     void roundTripsWireEventTypeAndProtectsPayloadFromMutation() throws Exception {
         RiskEvaluationRequest request = objectMapper.readValue(REQUEST, RiskEvaluationRequest.class);
-        ((com.fasterxml.jackson.databind.node.ObjectNode) request.event().data()).put("amount", "999.00");
+        ((com.fasterxml.jackson.databind.node.ObjectNode) request.event().data()).put("amount", 99900L);
         String serialized = objectMapper.writeValueAsString(request);
 
         assertThat(objectMapper.readTree(serialized).at("/event/eventType").asText())
-                .isEqualTo("money_movement.transfer.requested");
-        assertThat(objectMapper.readTree(serialized).at("/event/data/amount").asText()).isEqualTo("100.00");
+                .isEqualTo("money_movement.transfer");
+        assertThat(objectMapper.readTree(serialized).at("/event/data/amount").longValue()).isEqualTo(10000L);
     }
 
     private static RiskEvaluationResponse decision(RiskEvaluationRequest request,

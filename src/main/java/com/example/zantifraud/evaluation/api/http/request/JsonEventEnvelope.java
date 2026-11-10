@@ -14,7 +14,7 @@ import java.util.Objects;
  * event model before evaluation. Future Protobuf adapters should map directly
  * to that model rather than passing through this JSON contract.
  *
- * <p>The pair {@code (source, eventId)} identifies an occurrence. Preserve it on
+ * <p>The globally unique {@code eventId} identifies an occurrence. Preserve it on
  * redelivery and assign a new event ID to each lifecycle occurrence, including
  * completion. Related lifecycle events share an operation ID.
  *
@@ -24,8 +24,7 @@ import java.util.Objects;
  *
  * @param correlationId optional broader workflow reference
  * @param schemaVersion positive version of the typed payload contract
- * @param eventTime optional occurrence time, absent when the source cannot
- *                  establish an absolute timestamp
+ * @param eventTime required occurrence time with an explicit UTC offset
  * @param data payload whose type and schema version must be checked by the adapter
  */
 public record JsonEventEnvelope(
@@ -43,6 +42,7 @@ public record JsonEventEnvelope(
         Objects.requireNonNull(operationId, "operationId is required");
         Objects.requireNonNull(source, "source is required");
         Objects.requireNonNull(eventType, "eventType is required");
+        Objects.requireNonNull(eventTime, "eventTime is required");
         Objects.requireNonNull(data, "data is required");
 
         if (eventId.isBlank()) {

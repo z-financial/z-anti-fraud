@@ -4,16 +4,16 @@ import com.example.zantifraud.evaluation.api.http.request.RiskEvaluationRequest;
 import com.example.zantifraud.evaluation.api.http.response.RiskEvaluationResponse;
 import com.example.zantifraud.evaluation.model.DecisionReason;
 import com.example.zantifraud.evaluation.model.EvaluationStatus;
+import com.example.zantifraud.event.mapping.AdaptedEvent;
 import com.example.zantifraud.event.mapping.EventAdapterRegistry;
 import com.example.zantifraud.event.model.EventModel;
 import com.example.zantifraud.feature.service.FeatureService;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.Set;
 
 /**
- * MVP orchestration: adapt a supported event, then request its features.
+ * MVP orchestration: adapt a supported event, request persistence, then query features.
  * Authentication/source authorization and durable idempotency must precede
  * ingestion in the eventual implementation. This MVP performs no ingestion or
  * persistence and issues no decision. decisionPoint remains unused in V1.
@@ -29,14 +29,14 @@ public class RiskEvaluationCoordinator {
     }
 
     public RiskEvaluationResponse evaluate(RiskEvaluationRequest request) {
-        EventModel event = adapters.resolve(request.event().eventType(), request.event().source())
+        AdaptedEvent adapted = adapters.resolve(request.event().eventType(), request.event().source())
                 .adapt(request.event());
+        EventModel event = adapted.event();
 
-        // TODO: select applicable rules and collect their required feature IDs.
-        // With no rules yet, request no features; an empty snapshot is not evidence of ALLOW.
-        featureService.queryFeatures(event, Set.of());
+        featureService.persistEvents(adapted.featureEvents());
+        featureService.queryFeatures(adapted.featureEvents());
 
-        // TODO: execute rules, apply decision policy, and persist the decision/evidence.
+        // TODO: evaluate the decoded event with the returned feature snapshot and apply decision policy.
         return new RiskEvaluationResponse(
                 request.requestId(), null, event.eventId(), event.operationId(),
                 EvaluationStatus.UNAVAILABLE, null,
