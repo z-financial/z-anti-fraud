@@ -1,0 +1,16 @@
+Time,Date,Sender_account,Receiver_account,Amount,Payment_currency,Received_currency,Sender_bank_location,Receiver_bank_location,Payment_type,Is_laundering,Laundering_type
+10:46:37,2022-10-07,7401327478,4336451277,2603.3,UK pounds,UK pounds,UK,UK,Cash Deposit,1,Smurfing
+10:50:42,2022-10-07,3758118046,2487128589,2564.96,UK pounds,UK pounds,UK,UK,Debit card,0,Normal_Group
+11:17:19,2022-10-07,852237169,5748489103,11278.46,UK pounds,UK pounds,UK,UK,Cheque,0,Normal_Group
+11:19:32,2022-10-07,6340007440,4316483340,106.04,UK pounds,Indian rupee,UK,India,Cash Withdrawal,1,Cash_Withdrawal
+11:21:24,2022-10-07,7002077089,3758118046,778.19,UK pounds,UK pounds,UK,UK,Cheque,0,Normal_Group
+11:35:42,2022-10-07,3758118046,6081504025,5903.33,UK pounds,Mexican Peso,UK,Mexico,Cross-border,1,Behavioural_Change_2
+11:45:53,2022-10-07,445154846,4497771501,3957.87,UK pounds,Naira,UK,Nigeria,Cross-border,1,Structuring
+12:39:03,2022-10-07,2758469152,2987279234,7832.41,UK pounds,UK pounds,UK,UK,Debit card,1,Structuring
+12:43:55,2022-10-07,4316483340,3488425844,6282.38,UK pounds,UK pounds,UK,UK,ACH,0,Normal_Small_Fan_Out
+12:46:14,2022-10-07,5748489103,5971760311,3252.35,UK pounds,US dollar,UK,USA,Cross-border,1,Behavioural_Change_1
+13:05:00,2022-10-07,4928880336,1082642344,10753.26726981541,Yen,UK pounds,Japan,UK,Cross-border,1,Layered_Fan_In
+13:21:01,2022-10-07,8501920513,813395681,7500.77,UK pounds,UK pounds,UK,UK,Debit card,0,Normal_Group
+13:30:06,2022-10-07,4624222122,8683543845,13837.82,UK pounds,UK pounds,UK,UK,Credit card,1,Layered_Fan_Out
+13:33:59,2022-10-07,5262095561,927895922,4194.02,UK pounds,UK pounds,UK,UK,Cash Deposit,1,Smurfing
+13:50:25,2022-10-07,2369776263,988008298,10511.87,UK pounds,UK pounds,UK,UK,Debit card,1,Scatter-Gather

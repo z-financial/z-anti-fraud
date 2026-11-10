@@ -1,0 +1,19 @@
+Amaretto raw schema (12 attributes documented by the dataset/benchmark):
+- Transaction ID
+- Originator
+- Originator_ID
+- EntryDate
+- Normalized Amount
+- InputOutput
+- Market
+- Product ISIN
+- Product Type
+- Product Class
+- Currency
+- Anomaly
+
+Important:
+- Anomaly = 0 is normal; positive values distinguish one of five injected anomaly classes.
+- The CSV example in 04_amaretto_published_paper_example.csv is an illustrative example
+  published in the Amaretto paper figure. It was NOT extracted from the multipart archive.
+- The official dataset archive is split into 34 binary ZIP parts in the official repository.
