@@ -14,7 +14,7 @@ The architecture is divided into three main flows:
 
 ## 2. Synchronous Risk Decision Flow
 
-![Synchronous Risk Decision Flow](./diagrams/synchronous-risk-flow.png)
+![Synchronous risk decision flow. The Rule Engine receives the current event from the Risk Orchestrator and features from the Feature Service.](./diagrams/synchronous-risk-flow.png)
 
 This path is latency-sensitive and is called directly by business services such as Customer, Order, Trading, Matching, Wallet, and Ledger.
 
@@ -32,8 +32,9 @@ Provides risk features used during evaluation. It can combine:
 - **NRT features** — recently updated streaming features.
 - **Batch features** — periodically calculated historical features.
 
-**4. Rules Engine**  
-Evaluates deterministic fraud rules, for example transaction limits, velocity rules, unusual behavior, blocked entities, or policy constraints.
+**4. Rule Engine**
+
+Uses both the current event from the Risk Orchestrator and the features supplied by the Feature Service to evaluate deterministic fraud rules such as transaction limits, velocity rules, and blocked entities.
 
 **5. Graph Engine**  
 Analyzes relationships between entities such as users, devices, accounts, wallets, IP addresses, and payment instruments. It is useful for detecting fraud rings and suspicious shared relationships.
